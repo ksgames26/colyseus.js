@@ -1,101 +1,73 @@
-import { ServerError } from './errors/Errors';
-import { Room } from './Room';
-import { SchemaConstructor } from './serializer/SchemaSerializer';
-import { HTTP } from "./HTTP";
-import { Auth } from './Auth';
-import { SeatReservation } from './Protocol';
-import { discordURLBuilder } from './3rd_party/discord';
+// colyseus.js@0.16.19
+import { ServerError } from './errors/Errors.mjs';
+import { Room } from './Room.mjs';
+import { HTTP } from './HTTP.mjs';
+import { Auth } from './Auth.mjs';
+import { discordURLBuilder } from './3rd_party/discord.mjs';
 
-export type JoinOptions = any;
-
-export class MatchMakeError extends Error {
-    code: number;
-    constructor(message: string, code: number) {
+class MatchMakeError extends Error {
+    code;
+    constructor(message, code) {
         super(message);
         this.code = code;
         this.name = "MatchMakeError";
         Object.setPrototypeOf(this, MatchMakeError.prototype);
     }
 }
-
 // - React Native does not provide `window.location`
 // - Cocos Creator (Native) does not provide `window.location.hostname`
-const DEFAULT_ENDPOINT = (typeof (window) !== "undefined" &&  typeof (window?.location?.hostname) !== "undefined")
+const DEFAULT_ENDPOINT = (typeof (window) !== "undefined" && typeof (window?.location?.hostname) !== "undefined")
     ? `${window.location.protocol.replace("http", "ws")}//${window.location.hostname}${(window.location.port && `:${window.location.port}`)}`
     : "ws://127.0.0.1:2567";
-
-export interface EndpointSettings {
-    hostname: string,
-    secure: boolean,
-    port?: number,
-    pathname?: string,
-    searchParams?: string,
-}
-
-export interface ClientOptions {
-    headers?: { [id: string]: string };
-    urlBuilder?: (url: URL) => string;
-}
-
 //  Cocos Creator (Native) does not support `URL` and `URLSearchParams` 
-const parseURL = (url: string) => {
+const parseURL = (url) => {
     let protocol = '';
     let hostname = '';
     let port = '';
     let pathname = '';
     let search = '';
-
     // Parse protocol
     const protocolMatch = url.match(/^(https?|wss?):\/\//);
     if (protocolMatch) {
         protocol = protocolMatch[1] + ':';
         url = url.substring(protocolMatch[0].length);
     }
-
     // Separate path and query parameters
     const pathIndex = url.indexOf('/');
     let hostPart = pathIndex === -1 ? url : url.substring(0, pathIndex);
-    
     if (pathIndex !== -1) {
         const pathAndSearch = url.substring(pathIndex);
         const searchIndex = pathAndSearch.indexOf('?');
         if (searchIndex !== -1) {
             pathname = pathAndSearch.substring(0, searchIndex);
             search = pathAndSearch.substring(searchIndex + 1);
-        } else {
+        }
+        else {
             pathname = pathAndSearch;
         }
-    } else {
+    }
+    else {
         pathname = '';
     }
-
     // Parse hostname and port
     const portMatch = hostPart.match(/^(.+):(\d+)$/);
     if (portMatch) {
         hostname = portMatch[1];
         port = portMatch[2];
-    } else {
+    }
+    else {
         hostname = hostPart;
     }
-
     return { protocol, hostname, port, pathname, search };
 };
-
-export class Client {
-    static VERSION = process.env.VERSION;
-
-    public http: HTTP;
-    public auth: Auth;
-
-    protected settings: EndpointSettings;
-    protected urlBuilder: (url: URL) => string;
-
-    constructor(
-        settings: string | EndpointSettings = DEFAULT_ENDPOINT,
-        options?: ClientOptions,
-    ) {
+class Client {
+    static VERSION = "0.16.19";
+    http;
+    auth;
+    settings;
+    urlBuilder;
+    constructor(settings = DEFAULT_ENDPOINT, options) {
         if (typeof (settings) === "string") {
-
             //
             // endpoint by url
             //
@@ -104,11 +76,9 @@ export class Client {
                 // If it's a relative path, concatenate with default endpoint
                 urlString = DEFAULT_ENDPOINT + settings;
             }
-
             const parsedUrl = parseURL(urlString);
             const secure = (parsedUrl.protocol === "https:" || parsedUrl.protocol === "wss:");
             const port = Number(parsedUrl.port || (secure ? 443 : 80));
-
             this.settings = {
                 hostname: parsedUrl.hostname,
                 pathname: parsedUrl.pathname,
@@ -116,8 +86,8 @@ export class Client {
                 secure,
                 searchParams: parsedUrl.search || undefined,
             };
-
-        } else {
+        }
+        else {
             //
             // endpoint by settings
             //
@@ -129,46 +99,35 @@ export class Client {
             }
             this.settings = settings;
         }
-
         // make sure pathname does not end with "/"
         if (this.settings.pathname.endsWith("/")) {
             this.settings.pathname = this.settings.pathname.slice(0, -1);
         }
-
         this.http = new HTTP(this, options?.headers || {});
         this.auth = new Auth(this.http);
-
         this.urlBuilder = options?.urlBuilder;
-
         //
         // Discord Embedded SDK requires a custom URL builder
         //
-        if (
-            !this.urlBuilder &&
+        if (!this.urlBuilder &&
             typeof (window) !== "undefined" &&
-            window?.location?.hostname?.includes("discordsays.com")
-        ) {
+            window?.location?.hostname?.includes("discordsays.com")) {
             this.urlBuilder = discordURLBuilder;
             console.log("Colyseus SDK: Discord Embedded SDK detected. Using custom URL builder.");
         }
     }
-
-    public async joinOrCreate<T>(roomName: string, options: JoinOptions = {}, rootSchema?: SchemaConstructor<T>) {
-        return await this.createMatchMakeRequest<T>('joinOrCreate', roomName, options, rootSchema);
+    async joinOrCreate(roomName, options = {}, rootSchema) {
+        return await this.createMatchMakeRequest('joinOrCreate', roomName, options, rootSchema);
     }
-
-    public async create<T>(roomName: string, options: JoinOptions = {}, rootSchema?: SchemaConstructor<T>) {
-        return await this.createMatchMakeRequest<T>('create', roomName, options, rootSchema);
+    async create(roomName, options = {}, rootSchema) {
+        return await this.createMatchMakeRequest('create', roomName, options, rootSchema);
     }
-
-    public async join<T>(roomName: string, options: JoinOptions = {}, rootSchema?: SchemaConstructor<T>) {
-        return await this.createMatchMakeRequest<T>('join', roomName, options, rootSchema);
+    async join(roomName, options = {}, rootSchema) {
+        return await this.createMatchMakeRequest('join', roomName, options, rootSchema);
     }
-
-    public async joinById<T>(roomId: string, options: JoinOptions = {}, rootSchema?: SchemaConstructor<T>) {
-        return await this.createMatchMakeRequest<T>('joinById', roomId, options, rootSchema);
+    async joinById(roomId, options = {}, rootSchema) {
+        return await this.createMatchMakeRequest('joinById', roomId, options, rootSchema);
     }
-
     /**
      * Re-establish connection with a room this client was previously connected to.
      *
@@ -176,113 +135,86 @@ export class Client {
      * @param rootSchema (optional) Concrete root schema definition
      * @returns Promise<Room>
      */
-    public async reconnect<T>(reconnectionToken: string, rootSchema?: SchemaConstructor<T>) {
+    async reconnect(reconnectionToken, rootSchema) {
         if (typeof (reconnectionToken) === "string" && typeof (rootSchema) === "string") {
             throw new Error("DEPRECATED: .reconnect() now only accepts 'reconnectionToken' as argument.\nYou can get this token from previously connected `room.reconnectionToken`");
         }
         const [roomId, token] = reconnectionToken.split(":");
-		if (!roomId || !token) {
-			throw new Error("Invalid reconnection token format.\nThe format should be roomId:reconnectionToken");
-		}
-        return await this.createMatchMakeRequest<T>('reconnect', roomId, { reconnectionToken: token }, rootSchema);
+        if (!roomId || !token) {
+            throw new Error("Invalid reconnection token format.\nThe format should be roomId:reconnectionToken");
+        }
+        return await this.createMatchMakeRequest('reconnect', roomId, { reconnectionToken: token }, rootSchema);
     }
-
-    public async consumeSeatReservation<T>(
-        response: SeatReservation,
-        rootSchema?: SchemaConstructor<T>,
-        reuseRoomInstance?: Room // used in devMode
-    ): Promise<Room<T>> {
-        const room = this.createRoom<T>(response.room.name, rootSchema);
+    async consumeSeatReservation(response, rootSchema, reuseRoomInstance // used in devMode
+    ) {
+        const room = this.createRoom(response.room.name, rootSchema);
         room.roomId = response.room.roomId;
         room.sessionId = response.sessionId;
-
-        const options: any = { sessionId: room.sessionId };
-
+        const options = { sessionId: room.sessionId };
         // forward "reconnection token" in case of reconnection.
         if (response.reconnectionToken) {
             options.reconnectionToken = response.reconnectionToken;
         }
-
         const targetRoom = reuseRoomInstance || room;
         room.connect(this.buildEndpoint(response.room, options, response.protocol), response.devMode && (async () => {
             console.info(`[Colyseus devMode]: ${String.fromCodePoint(0x1F504)} Re-establishing connection with room id '${room.roomId}'...`); // 🔄
-
             let retryCount = 0;
             let retryMaxRetries = 8;
-
             const retryReconnection = async () => {
                 retryCount++;
-
                 try {
                     await this.consumeSeatReservation(response, rootSchema, targetRoom);
                     console.info(`[Colyseus devMode]: ${String.fromCodePoint(0x2705)} Successfully re-established connection with room '${room.roomId}'`); // ✅
-
-                } catch (e) {
+                }
+                catch (e) {
                     if (retryCount < retryMaxRetries) {
                         console.info(`[Colyseus devMode]: ${String.fromCodePoint(0x1F504)} retrying... (${retryCount} out of ${retryMaxRetries})`); // 🔄
                         setTimeout(retryReconnection, 2000);
-
-                    } else {
+                    }
+                    else {
                         console.info(`[Colyseus devMode]: ${String.fromCodePoint(0x274C)} Failed to reconnect. Is your server running? Please check server logs.`); // ❌
                     }
                 }
             };
-
             setTimeout(retryReconnection, 2000);
         }), targetRoom, response, this.http.headers);
-
         return new Promise((resolve, reject) => {
             const onError = (code, message) => reject(new ServerError(code, message));
             targetRoom.onError.once(onError);
-
             targetRoom['onJoin'].once(() => {
                 targetRoom.onError.remove(onError);
                 resolve(targetRoom);
             });
         });
     }
-
-    protected async createMatchMakeRequest<T>(
-        method: string,
-        roomName: string,
-        options: JoinOptions = {},
-        rootSchema?: SchemaConstructor<T>,
-        reuseRoomInstance?: Room,
-    ) {
-        const response = (
-            await this.http.post<SeatReservation>(`matchmake/${method}/${roomName}`, {
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(options)
-            })
-        ).data;
-
+    async createMatchMakeRequest(method, roomName, options = {}, rootSchema, reuseRoomInstance) {
+        const response = (await this.http.post(`matchmake/${method}/${roomName}`, {
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(options)
+        })).data;
         // FIXME: HTTP class is already handling this as ServerError.
         // @ts-ignore
-        if (response.error) { throw new MatchMakeError(response.error, response.code); }
-
+        if (response.error) {
+            throw new MatchMakeError(response.error, response.code);
+        }
         // forward reconnection token during "reconnect" methods.
         if (method === "reconnect") {
             response.reconnectionToken = options.reconnectionToken;
         }
-
-        return await this.consumeSeatReservation<T>(response, rootSchema, reuseRoomInstance);
+        return await this.consumeSeatReservation(response, rootSchema, reuseRoomInstance);
     }
-
-    protected createRoom<T>(roomName: string, rootSchema?: SchemaConstructor<T>) {
-        return new Room<T>(roomName, rootSchema);
+    createRoom(roomName, rootSchema) {
+        return new Room(roomName, rootSchema);
     }
-
-    protected buildEndpoint(room: any, options: any = {}, protocol: string = "ws") {
+    buildEndpoint(room, options = {}, protocol = "ws") {
         let searchParams = this.settings.searchParams || "";
-
         // forward authentication token
         if (this.http.authToken) {
             options['_authToken'] = this.http.authToken;
         }
-
         // append provided options
         for (const name in options) {
             if (!options.hasOwnProperty(name)) {
@@ -290,45 +222,39 @@ export class Client {
             }
             searchParams += (searchParams ? '&' : '') + `${name}=${options[name]}`;
         }
-
         if (protocol === "h3") {
             protocol = "http";
         }
-
         let endpoint = (this.settings.secure)
             ? `${protocol}s://`
             : `${protocol}://`;
-
         if (room.publicAddress) {
             endpoint += `${room.publicAddress}`;
-
-        } else {
+        }
+        else {
             endpoint += `${this.settings.hostname}${this.getEndpointPort()}${this.settings.pathname}`;
         }
-
         const endpointURL = `${endpoint}/${room.processId}/${room.roomId}?${searchParams}`;
         return (this.urlBuilder)
             ? this.urlBuilder(new URL(endpointURL))
             : endpointURL;
     }
-
-    protected getHttpEndpoint(segments: string = '') {
+    getHttpEndpoint(segments = '') {
         const path = segments.startsWith("/") ? segments : `/${segments}`;
-
         let endpointURL = `${(this.settings.secure) ? "https" : "http"}://${this.settings.hostname}${this.getEndpointPort()}${this.settings.pathname}${path}`;
-
         if (this.settings.searchParams) {
             endpointURL += `?${this.settings.searchParams}`;
         }
-
         return (this.urlBuilder)
             ? this.urlBuilder(new URL(endpointURL))
             : endpointURL;
     }
-
-    protected getEndpointPort() {
+    getEndpointPort() {
         return (this.settings.port !== 80 && this.settings.port !== 443)
             ? `:${this.settings.port}`
             : "";
     }
 }
+
+export { Client, MatchMakeError };
+//# sourceMappingURL=Client.mjs.map
